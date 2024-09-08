@@ -14,9 +14,14 @@ def _run_in_batches(func, data_x, out, batch_size):
         out[start:end] = func(batch_data)
 
 def extract_image_patch(image, bbox, patch_shape):
-    """Extract image patch from bounding box and ensure it has correct number of channels."""
+    """Extract image patch from bounding box and ensure it has the correct number of channels."""
     bbox = np.array(bbox)
     if patch_shape is not None:
+        # Ensure patch_shape is a tuple of integers
+        if not (isinstance(patch_shape, tuple) and len(patch_shape) == 2 and all(isinstance(x, int) for x in patch_shape)):
+            raise ValueError(f"Invalid patch_shape: {patch_shape}. Expected a tuple of two integers.")
+
+        # Calculate target aspect ratio and adjust bounding box dimensions
         target_aspect = float(patch_shape[1]) / patch_shape[0]
         new_width = target_aspect * bbox[3]
         bbox[0] -= (new_width - bbox[2]) / 2
@@ -25,12 +30,20 @@ def extract_image_patch(image, bbox, patch_shape):
     bbox[2:] += bbox[:2]
     bbox = bbox.astype(np.int)
 
+    # Clip bounding box coordinates to be within image bounds
     bbox[:2] = np.maximum(0, bbox[:2])
     bbox[2:] = np.minimum(np.asarray(image.shape[:2][::-1]) - 1, bbox[2:])
     if np.any(bbox[:2] >= bbox[2:]):
         return None
     sx, sy, ex, ey = bbox
     image = image[sy:ey, sx:ex]
+
+    # Verify the patch_shape values before resizing
+    if patch_shape[0] <= 0 or patch_shape[1] <= 0:
+        raise ValueError(f"Invalid patch_shape values: {patch_shape}. Both dimensions must be positive integers.")
+    
+    # Convert patch_shape to integer tuples to avoid any issues
+    patch_shape = tuple(map(int, patch_shape))
     image = cv2.resize(image, tuple(patch_shape[::-1]))
 
     if len(image.shape) == 3 and image.shape[-1] == 3:
@@ -39,6 +52,11 @@ def extract_image_patch(image, bbox, patch_shape):
         image = image[..., np.newaxis]  # Add channel dimension
 
     return image
+
+
+
+
+
 
 
 class ImageEncoder(object):
@@ -76,17 +94,24 @@ def create_box_encoder(model_filename, input_name="images", batch_size=32):
 
     def encoder(image, boxes):
         image_patches = []
+        print(f"Image shape: {image.shape}")
+        print(f"Patch shape: {image_shape[:2]}")
         for box in boxes:
-            patch = extract_image_patch(image, box, image_shape[:2])
+            patch_shape = image_shape[:2]
+            print(f"Using patch_shape: {patch_shape}")  # Debugging statement
+            patch = extract_image_patch(image, box, tuple(map(int, patch_shape)))  # Ensure patch_shape is a tuple of integers
             if patch is None:
                 print("WARNING: Failed to extract image patch: %s." % str(box))
-                patch = np.random.uniform(
-                    0., 255., image_shape).astype(np.uint8)
+                patch = np.random.uniform(0., 255., image_shape).astype(np.uint8)
             image_patches.append(patch)
         image_patches = np.asarray(image_patches)
         return image_encoder(image_patches, batch_size)
 
     return encoder
+
+
+
+
 
 def generate_detections(encoder, mot_dir, output_dir, detection_dir=None):
     """Generate detections with features."""
