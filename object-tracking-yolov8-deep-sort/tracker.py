@@ -12,25 +12,25 @@ class Track:
         self.bbox = bbox
 
 class Tracker:
-    tracker = None
-    encoder = None
-    tracks = None
-
     def __init__(self):
         max_cosine_distance = 0.4
         nn_budget = None
 
-        encoder_model_filename = "model_data\model_CNN_V2.h5"
+        encoder_model_filename = "model_data/model_CNN_V2.h5"
 
         # Initialize the encoder and tracker
         metric = nn_matching.NearestNeighborDistanceMetric("cosine", max_cosine_distance, nn_budget)
         self.tracker = DeepSortTracker(metric)
         self.encoder = gdet.create_box_encoder(encoder_model_filename, batch_size=1)
+        if self.encoder is None:
+            raise ValueError("Encoder could not be initialized. Check the create_box_encoder function.")
+
+        self.tracks = []
 
     def update(self, frame, detections):
         if len(detections) == 0:
             self.tracker.predict()
-            self.tracker.update([])  
+            self.tracker.update([])
             self.update_tracks()
             return
 
